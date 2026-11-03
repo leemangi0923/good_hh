@@ -60,9 +60,33 @@ ecoWorker({type:'eval', id:2, hh:1, idx:[0], cap:2000, prune:'none', tl:1000});
 `, context);
 assert.equal(vm.runInContext('ecoMessages.length', context), 1, 'result waits for rest');
 assert.equal(rests.length, 1);
-assert.ok(rests[0].delay >= 16 && rests[0].delay <= 1000);
+assert.ok(rests[0].delay >= 1);
 rests[0].callback();
 assert.equal(vm.runInContext('ecoMessages[1].type', context), 'result');
 assert.equal(vm.runInContext('ecoMessages[1].per[0].mapping', context), workerResult[1].per[0].mapping);
 assert.equal(vm.runInContext('ecoMessages[1].per[0].moves', context), workerResult[1].per[0].moves);
 console.log('PASS: CPU saving mode yields between evaluations and preserves bounded evaluation outcome');
+for (const duty of [10, 50, 80, 100]) {
+  rests.length = 0;
+  const ticks = [];
+  context.performance = { now() { const t = ticks.length * 10; ticks.push(t); return t; } };
+  context.testDuty = duty;
+  vm.runInContext(`
+    globalThis.dutyMessages = [];
+    const dutyWorker = workerBody(m => dutyMessages.push(m));
+    dutyWorker({type:'init', fi, boards:[fi.start], precise:false, lowPower:true, cpuDuty:testDuty});
+    dutyWorker({type:'eval', id:3, hh:1, idx:[0], cap:1, prune:'none', tl:1000});
+  `, context);
+  if (duty === 100) {
+    assert.equal(rests.length, 0);
+    assert.equal(vm.runInContext('dutyMessages.length', context), 2);
+  } else {
+    assert.equal(rests.length, 1);
+    // The first tick creates the evaluation deadline; the next starts its duty window.
+    const elapsed = ticks.at(-1) - ticks[1];
+    assert.equal(rests[0].delay, Math.max(1, elapsed * (100 / duty - 1)));
+    rests[0].callback();
+    assert.equal(vm.runInContext('dutyMessages.length', context), 2);
+  }
+}
+console.log('PASS: 10%, 50%, 80% duty ratios and no pause at 100%');
