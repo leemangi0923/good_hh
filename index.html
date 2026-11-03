@@ -386,7 +386,7 @@
   <div class="brand">
     <div class="mark">h·</div>
     <div><b>최휴 탐색기</b><span>최적 휴리스틱 가중치 탐색</span>
-      <small class="release"><strong id="appVersion">v6.0.0</strong><time id="appUpdated" datetime="2026-11-03T14:07+09:00" title="업데이트 일시 · 한국 시간">2026년 11월 03일 14:07 KST</time></small>
+      <small class="release"><strong id="appVersion">v6.1.0</strong><time id="appUpdated" datetime="2026-11-03T14:11+09:00" title="업데이트 일시 · 한국 시간">2026년 11월 03일 14:11 KST</time></small>
     </div>
   </div>
   <nav class="steps" id="steps">
@@ -457,9 +457,10 @@
     </div>
 
     <div class="sec">
-      <div class="rowline"><h4 style="margin:0">동시 작업</h4><span class="mono" style="color:var(--accent)" id="nwLabel">8 워커</span></div>
-      <input type="range" class="range" id="nworkers" min="1" max="16" value="8" step="1">
-      <div class="hint">연산 시간이 순위 기준이면 1로 두는 게 정확합니다.</div>
+      <div class="rowline"><h4 style="margin:0">동시 작업</h4><span class="mono" style="color:var(--accent)" id="nwLabel">1 워커</span></div>
+      <input type="range" class="range" id="nworkers" min="1" max="16" value="1" step="1">
+      <label class="lim" style="margin-top:10px"><input type="checkbox" id="lowPowerOn" checked><span>CPU 절약 모드</span></label>
+      <div class="hint">절약 모드는 워커 1개로 실행하고 평가 사이에 쉽니다. 완료까지 더 오래 걸립니다. 끄면 선택한 워커 수로 실행합니다. 연산 시간이 순위 기준이면 1로 두는 게 정확합니다.</div>
     </div>
 
     <div class="sec">
@@ -1937,17 +1938,19 @@ function solverCore() {
 //    bfs : 휴리스틱 없이 너비 우선으로 (최단 수)
 function workerBody(post) {
   const core = solverCore();
-  let cfg = null, boards = null, precise = false;
+  let cfg = null, boards = null, precise = false, lowPower = false;
   return function (msg) {
     try {
       if (msg.type === 'init') {
         cfg = core.buildFns(msg.fi).cfg;
         boards = msg.boards;
         precise = !!msg.precise;
+        lowPower = !!msg.lowPower;
         post({ type: 'ready' });
         return;
       }
       if (msg.type === 'eval') {
+        const started = performance.now();
         const per = [];
         let cum = 0, over = false, timeout = false;
         const opts = { deadline: msg.tl ? performance.now() + msg.tl : Infinity, bfs: !!msg.bfs };
@@ -1960,7 +1963,10 @@ function workerBody(post) {
           if (r.mapping === Infinity) { over = !!r.over; timeout = !!r.timeout; break; }
           cum += r.mapping;
         }
-        post({ type: 'result', id: msg.id, hh: msg.hh, per, over, timeout });
+        const result = { type: 'result', id: msg.id, hh: msg.hh, per, over, timeout };
+        // 측정 시간에 휴식을 넣지 않고, 결과를 알리기 전까지 다음 평가를 받지 않는다.
+        if (lowPower) setTimeout(() => post(result), Math.min(1000, Math.max(16, performance.now() - started)));
+        else post(result);
       }
     } catch (e) {
       post({ type: 'error', id: msg.id, message: String((e && e.message) || e) });
@@ -2236,7 +2242,7 @@ function setStep(n, doneAll) {
 
 const SAVE_KEY = 'chwhu.settings.v1';
 const SAVE_IDS = ['hmin', 'hmax', 'step0', 'res', 'tlimit', 'cap', 'budget', 'rcount', 'rsteps', 'rseed', 'rincl', 'nworkers'];
-const SAVE_CHECKS = ['tlOn', 'capOn', 'budgetOn'];
+const SAVE_CHECKS = ['tlOn', 'capOn', 'budgetOn', 'lowPowerOn'];
 
 // 한도는 체크박스로 켜고 끈다. 꺼 둔 한도 대신 안전 한도가 늘 걸려 있다
 // (다 꺼도 한 hh 가 끝없이 돌거나 메모리가 넘치지 않게).
@@ -3846,7 +3852,8 @@ async function run() {
     const step0 = parseFloat($('step0').value);
     const res = Math.max(1e-7, parseFloat($('res').value) || 1e-4);
     const budget = LIM.budget;
-    const nW = Math.max(1, Math.min(32, parseInt($('nworkers').value, 10) || 1));
+    const lowPower = $('lowPowerOn').checked;
+    const nW = lowPower ? 1 : Math.max(1, Math.min(32, parseInt($('nworkers').value, 10) || 1));
     const tl = LIM.tl;                 // hh 한 번(모든 보드)에 쓸 수 있는 시간 (꺼 두면 안전 한도 60초)
     if (!(hmax > hmin)) throw new Error('최대값이 최소값보다 커야 합니다.');
     if (!(step0 > 0)) throw new Error('초기 간격은 0보다 커야 합니다.');
@@ -3875,7 +3882,7 @@ async function run() {
     drawChart();
 
     setStatus('워커 준비 중…', 'run');
-    pool = state.pool = await Pool.create(nW, { type: 'init', fi, boards: set.boards, precise });
+    pool = state.pool = await Pool.create(nW, { type: 'init', fi, boards: set.boards, precise, lowPower });
     if (state.stopFlag) throw new Error('중지');
 
     // 랜덤 보드는 hh = 최대값(가장 탐욕적)으로 한 번씩 풀어 보고 못 푸는 건 뺀다
@@ -4172,7 +4179,7 @@ async function run() {
     } else $('cmpCard').hidden = true;
     document.title = `✓ ${best.rec} · 최휴 탐색기`;
     // 막대에서 가지치기로 값이 없는 hh 를 고르면 같은 조건으로 직접 풀어 볼 수 있게 남겨 둔다
-    state.probe = { init: { type: 'init', fi, boards: set.boards, precise }, idx, cap, tl, agg, chart: state.chart, cache: new Map(), pool: null, token: 0 };
+    state.probe = { init: { type: 'init', fi, boards: set.boards, precise, lowPower }, idx, cap, tl, agg, chart: state.chart, cache: new Map(), pool: null, token: 0 };
 
     setProgress(1);
     setStep(4, true);
@@ -5084,11 +5091,11 @@ function paintPreset() {
 // ==== 시작 ==================================================================
 
 $('nworkers').max = Math.max(16, navigator.hardwareConcurrency || 4);
-$('nworkers').value = Math.max(1, Math.min(8, (navigator.hardwareConcurrency || 4) - 1));
+$('nworkers').value = '1';
 loadSettings();
 // 예전 버전이 저장해 둔 코드가 남아 있으면 지운다
 saveSettings();
-$('nwLabel').textContent = $('nworkers').value + ' 워커';
+paintCpuMode();
 
 bindSwitch($('pruneSw'), () => state.prune, v => { state.prune = v; });
 bindSwitch($('randSw'), () => state.random, v => { state.random = v; applyRandom(); });
@@ -5103,7 +5110,13 @@ bindChart();
 renderKpis(null, getOrder());
 
 $('accents').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; state.accent = b.dataset.a; applyAccent(); saveSettings(); });
-$('nworkers').addEventListener('input', () => { $('nwLabel').textContent = $('nworkers').value + ' 워커'; });
+function paintCpuMode() {
+  const low = $('lowPowerOn').checked;
+  $('nworkers').disabled = low;
+  $('nwLabel').textContent = low ? '1 워커 · 절약' : $('nworkers').value + ' 워커';
+}
+$('nworkers').addEventListener('input', paintCpuMode);
+$('lowPowerOn').addEventListener('change', paintCpuMode);
 document.addEventListener('change', e => { if (e.target.closest('.side')) { paintLimits(); saveSettings(); } });
 paintLimits();
 $('parse').addEventListener('click', () => parseCode());
