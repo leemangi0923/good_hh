@@ -42,6 +42,8 @@
   .mark { width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--accent); display: grid; place-items: center; color: var(--accent); font-family: var(--mono); font-size: 13px; }
   .brand b { font-weight: 600; font-size: 15px; letter-spacing: -.01em; }
   .brand span { color: var(--fg3); font-size: 12px; display: block; margin-top: 1px; }
+  .brand .release { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; margin-top: 3px; font-size: 10px; color: var(--fg3); }
+  .release time { font-size: 10px; white-space: nowrap; }
   .steps { display: flex; gap: 6px; align-items: center; color: var(--fg3); font-size: 12.5px; }
   .steps > span:not(.sep) { display: inline-flex; align-items: center; transition: color .2s; }
   .steps i { font-style: normal; width: 18px; height: 18px; border-radius: 50%; display: inline-grid; place-items: center;
@@ -383,7 +385,9 @@
 <header class="top">
   <div class="brand">
     <div class="mark">h·</div>
-    <div><b>최휴 탐색기</b><span>최적 휴리스틱 가중치 탐색</span></div>
+    <div><b>최휴 탐색기</b><span>최적 휴리스틱 가중치 탐색</span>
+      <small class="release"><strong id="appVersion">v6.0.0</strong><time id="appUpdated" datetime="2026-11-03T14:07+09:00" title="업데이트 일시 · 한국 시간">2026년 11월 03일 14:07 KST</time></small>
+    </div>
   </div>
   <nav class="steps" id="steps">
     <span data-s="1" class="active"><i>1</i>코드</span><span class="sep"></span>
