@@ -73,7 +73,7 @@ for (const duty of [10, 50, 80, 100]) {
   context.testDuty = duty;
   vm.runInContext(`
     globalThis.dutyMessages = [];
-    const dutyWorker = workerBody(m => dutyMessages.push(m));
+    var dutyWorker = workerBody(m => dutyMessages.push(m));
     dutyWorker({type:'init', fi, boards:[fi.start], precise:false, lowPower:true, cpuDuty:testDuty});
     dutyWorker({type:'eval', id:3, hh:1, idx:[0], cap:1, prune:'none', tl:1000});
   `, context);
@@ -82,8 +82,8 @@ for (const duty of [10, 50, 80, 100]) {
     assert.equal(vm.runInContext('dutyMessages.length', context), 2);
   } else {
     assert.equal(rests.length, 1);
-    // The first tick creates the evaluation deadline; the next starts its duty window.
-    const elapsed = ticks.at(-1) - ticks[1];
+    // The first tick starts the duty window, before creating the deadline.
+    const elapsed = ticks.at(-1) - ticks[0];
     assert.equal(rests[0].delay, Math.max(1, elapsed * (100 / duty - 1)));
     rests[0].callback();
     assert.equal(vm.runInContext('dutyMessages.length', context), 2);
