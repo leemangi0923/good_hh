@@ -386,7 +386,7 @@
   <div class="brand">
     <div class="mark">h·</div>
     <div><b>최휴 탐색기</b><span>최적 휴리스틱 가중치 탐색</span>
-      <small class="release"><strong id="appVersion">v6.2.0</strong><time id="appUpdated" datetime="2026-11-03T14:12+09:00" title="업데이트 일시 · 한국 시간">2026년 11월 03일 14:12 KST</time></small>
+      <small class="release"><strong id="appVersion">v6.3.0</strong><time id="appUpdated" datetime="2026-11-04T21:46+09:00" title="업데이트 일시 · 한국 시간">2026년 11월 04일 21:46 KST</time></small>
     </div>
   </div>
   <nav class="steps" id="steps">
@@ -538,7 +538,10 @@
     <section class="card hero">
       <div class="hero-l">
         <div class="eyebrow" id="heroLabel" title="확인된 최적 구간의 가운데 절반 안에서 가장 짧게 쓰이는 값">추천 hh</div>
-        <div class="big idle" id="big">—</div>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <div class="big idle" id="big">—</div>
+          <button class="btn sm" id="copyHH" disabled title="추천 HH 숫자만 복사" aria-label="추천 HH 복사">복사</button>
+        </div>
         <div class="interval" id="interval">탐색을 실행하면 가장 좋은 hh 구간이 여기 나타납니다.</div>
         <div class="rbar" id="rbar" hidden tabindex="0" role="slider" aria-label="hh 고르기" title="끌거나 눌러서 다른 hh 의 결과를 오른쪽 카드에서 보기 · ←→ 키로도 · 더블클릭하면 추천으로"></div>
         <div class="rbhint" id="rbHint" hidden>↔ 막대를 끌면 그 hh 의 결과가 오른쪽 카드에 나와요</div>
@@ -1066,6 +1069,20 @@ function expandIn(s) {
         e = k;
       } else if (/[\w.\u0002]/.test(c)) e--;
       else break;
+    }
+    // 포함 연산은 덧셈/뺄셈보다 우선순위가 낮다: dif-25 not in R.
+    // 마지막 항(25)만 잡으면 dif - !IN(R, 25)가 되어 이동 규칙이 달라진다.
+    for (;;) {
+      let k = e;
+      while (k > 0 && /\s/.test(s[k - 1])) k--;
+      if (k === 0 || !/[+*/%\-]/.test(s[k - 1])) break;
+      const op = k - 1;
+      const [from, to] = leftOperand(s, op);
+      if (from === to || /^(?:not|and|or|if|else)$/.test(s.slice(from, to))) {
+        if (/[+-]/.test(s[op])) e = op;
+        break;
+      }
+      e = from;
     }
     const lhs = s.slice(e, l);
     const neg = m[1].startsWith('not');
@@ -3629,7 +3646,7 @@ function renderKpis(best, order, sub, preview) {
   $('kpis').innerHTML = all.map(k => {
     const i = order.indexOf(k);
     const v = best ? (k === 'ms' ? fmtMs(best[k]) : fmtNum(best[k])) : '—';
-    return `<div class="kpi"><div class="k">${i >= 0 ? `<em>${i + 1}</em>` : ''}${NAME[k]}</div>` +
+    return `<div class="kpi"><div class="k">${i >= 0 ? `<em>${i + 1}</em>` : ''}${NAME[k]}${state.chart && state.chart.multi ? ' · ' + AGG[state.chart.aggMode] : ''}</div>` +
       `<div class="v">${v}${k === 'ms' && best ? '<small>ms</small>' : ''}</div><div class="d">${(sub && sub[k]) || ''}</div></div>`;
   }).join('');
 }
@@ -3806,6 +3823,7 @@ function bindRangeBar() {
 }
 
 function resetHero(label, text) {
+  $('copyHH').disabled = true;
   $('heroLabel').textContent = label;
   $('big').textContent = '—';
   $('big').classList.add('idle');
@@ -4082,6 +4100,7 @@ async function run() {
     // ---- 결과 머리 ----
     $('heroLabel').textContent = '추천 hh';
     $('big').textContent = best.rec;
+    $('copyHH').disabled = false;
     $('big').classList.remove('idle');
     $('interval').innerHTML = `최적 구간 <b>${best.lo === best.hi ? fmtHH(best.lo) : fmtHH(best.lo) + ' – ' + fmtHH(best.hi)}</b> · 폭 ${fmtHH(best.width)}`;
     renderRangeBar(state.chart, best);
@@ -4246,6 +4265,12 @@ async function copyText(text) {
   try { ok = document.execCommand('copy'); } catch (e) {}
   ta.remove();
   return ok;
+}
+async function copyRecommendedHH() {
+  const best = state.best;
+  if (state.running || !best || !best.ok) return;
+  const copied = await copyText(String(best.rec));
+  toast(copied ? '추천 HH ' + best.rec + ' 복사 완료' : '복사하지 못했습니다. HH 값을 직접 선택해 복사하세요.');
 }
 function hashStr(s) {
   let h = 2166136261;
@@ -4960,7 +4985,7 @@ function saveLast() {
   if (!ch || !R || !info) return;
   const pIndex = new Map(ch.points.map((p, i) => [p, i]));
   const pack = withPer => ({
-    v: 1, t: Date.now(), code: info.srcCode, libId: state.libId, fn: info.solverName,
+    v: 1, engine: 2, t: Date.now(), code: info.srcCode, libId: state.libId, fn: info.solverName,
     // 결과 화면은 탐색이 끝난 순간 모습 그대로
     html: {
       heroLabel: $('heroLabel').textContent, big: $('big').textContent, interval: $('interval').innerHTML,
@@ -5003,6 +5028,7 @@ function applyLast(d) {
   disposeProbe();
   kpiSaved = null; resetHHSel();
   $('heroLabel').textContent = H.heroLabel;
+  $('copyHH').disabled = false;
   $('big').textContent = H.big; $('big').classList.remove('idle');
   $('interval').innerHTML = H.interval;
   $('rbar').innerHTML = H.rbar; $('rbar').hidden = H.rbarHidden; $('rbHint').hidden = H.rbarHidden;
@@ -5039,6 +5065,7 @@ function restoreLast() {
   let d = null;
   try { d = JSON.parse(localStorage.getItem(LAST_KEY) || 'null', decInf); } catch (e) { d = null; }
   if (!d || d.v !== 1 || !d.plateaus || !d.plateaus.length) return;
+  if (d.engine !== 2) { toast('이동 규칙 변환이 수정되었습니다. 코드를 다시 분석하고 탐색해 주세요.'); return; }
   try { applyLast(d); } catch (e) { try { localStorage.removeItem(LAST_KEY); } catch (_) {} return; }
   const t = new Date(d.t), lib = d.libId && loadLib().find(e => e.id === d.libId);
   const best = d.plateaus[d.bestIndex];
@@ -5170,6 +5197,7 @@ $('vin').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDe
 $('csvBtn').addEventListener('click', exportCSV);
 $('jsonBtn').addEventListener('click', exportJSON);
 $('copySum').addEventListener('click', copySummary);
+$('copyHH').addEventListener('click', copyRecommendedHH);
 $('toReplay').addEventListener('click', () => $('replayCard').scrollIntoView({ behavior: 'smooth', block: 'center' }));
 $('histBody').addEventListener('click', histClick);
 $('histClear').addEventListener('click', histClear);
